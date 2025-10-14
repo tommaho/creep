@@ -1,0 +1,40 @@
+#!/usr/bin/env bpftrace
+/*
+  ADFA-mode syscall stream
+  - Emits enter-only syscall numbers (args->id) and process-exit markers as NDJSON.
+  - Keeps per-process sequences intact (ADFA-LD style).
+  - Filters by UID >= ONLY_UID_MIN, and optionally by comm names.
+
+  Tested with modern bpftrace (no maps, no #defines).
+*/
+
+BEGIN
+{
+  @ONLY_UID_MIN = 1000;   // 0 disables UID filter
+  @USE_ALLOWLIST = 0;     // 0 = capture all, 1 = restrict to a few comm names
+
+  printf("bpftrace ADFA-mode stream started\n");
+}
+
+/*
+  Helper predicate logic inline:
+    If @USE_ALLOWLIST == 1, only capture if comm is one of the listed names.
+    Else, capture all (subject to UID filter).
+*/
+tracepoint:raw_syscalls:sys_enter
+/ (uid >= (uint64)@ONLY_UID_MIN) && 
+  ( (@USE_ALLOWLIST == 0) ||
+    (comm == "bash" || comm == "python" || comm == "sshd" || comm == "ssh" || comm == "nginx") ) /
+{
+  printf("{\"type\":\"enter\",\"pid\":%d,\"comm\":\"%s\",\"syscall\":%d,\"ts\":%llu}\n",
+         pid, comm, args->id, nsecs);
+}
+
+tracepoint:sched:sched_process_exit
+/ (uid >= (uint64)@ONLY_UID_MIN) && 
+  ( (@USE_ALLOWLIST == 0) ||
+    (comm == "bash" || comm == "python" || comm == "sshd" || comm == "ssh" || comm == "nginx") ) /
+{
+  printf("{\"type\":\"exit\",\"pid\":%d,\"comm\":\"%s\",\"ts\":%llu}\n",
+         pid, comm, nsecs);
+}

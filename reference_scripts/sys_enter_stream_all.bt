@@ -1,0 +1,23 @@
+# LLM generated code (GPT-5)
+
+#!/usr/bin/env bpftrace
+/*
+  Emit newline-delimited JSON for sys_enter events and process-exit events.
+
+  - Uses tracepoint:raw_syscalls:sys_enter to get syscall number in args->id.
+  - Uses tracepoint:sched:sched_process_exit to detect process exit so consumers can flush sequences.
+  - Fields: type ("enter"|"exit"), pid, comm, syscall (enter only), ts (nsecs)
+*/
+
+tracepoint:raw_syscalls:sys_enter
+{
+    /* args->id is the syscall number */
+    printf("{\"type\":\"enter\",\"pid\":%d,\"comm\":\"%s\",\"syscall\":%d,\"ts\":%llu}\n",
+           pid, comm, args->id, nsecs);
+}
+
+tracepoint:sched:sched_process_exit
+{
+    printf("{\"type\":\"exit\",\"pid\":%d,\"comm\":\"%s\",\"ts\":%llu}\n",
+           pid, comm, nsecs);
+}
